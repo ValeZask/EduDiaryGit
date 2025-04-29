@@ -1,0 +1,60 @@
+# Python и виртуальное окружение
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Django
+*.log
+*.pot
+*.pyc
+*.sqlite3  # SQLite3 база данных (локальная)
+db.sqlite3
+**/db.sqlite3  # Убедимся, что файл исключен в любой директории
+migrations/  # Миграции (чтобы не коммитить автоматически сгенерированные файлы)
+staticfiles/
+media/  # Папка для медиафайлов (например, аватары)
+
+# PyCharm
+*.iml
+.idea/
+
+# Локальные настройки и секреты
+.env
+*.env
+local_settings.py
+secrets.json
+*.key
+*.pem
+
+# Временные файлы и кэши
+*.cache
+*.bak
+*.swp
+*~
+.DS_Store  # macOS
+Thumbs.db  # Windows
+
+# Деплой и продакшен
+*.pid
+*.seed
+*.rdb
+*.tar.gz
+*.zip
+.python-version
+.python_history
+
+# Документация и прочие артефакты
+docs/_build/
+*.egg-info/
+build/
+dist/
