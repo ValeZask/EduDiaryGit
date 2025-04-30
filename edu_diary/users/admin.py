@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, Profile
+from .models import User, Profile, StudentParent
 
 
 class ProfileInline(admin.StackedInline):
@@ -35,3 +35,10 @@ class ProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'class_number', 'class_letter', 'phone')
     search_fields = ('user__email', 'user__full_name', 'phone')
     list_filter = ('class_number',)
+
+
+@admin.register(StudentParent)
+class StudentParentAdmin(admin.ModelAdmin):
+    list_display = ('student', 'parent')
+    list_filter = ('student__role', 'parent__role')
+    search_fields = ('student__full_name', 'parent__full_name')

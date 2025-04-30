@@ -38,3 +38,28 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"Профиль {self.user.full_name}"
+
+
+class StudentParent(models.Model):
+    student = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='student_parents',
+        verbose_name='Ученик',
+        limit_choices_to={'role': 'student'}
+    )
+    parent = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='parent_students',
+        verbose_name='Родитель',
+        limit_choices_to={'role': 'parent'}
+    )
+
+    class Meta:
+        verbose_name = 'Связь Ученик-Родитель'
+        verbose_name_plural = 'Связи Ученик-Родитель'
+        unique_together = ('student', 'parent')
+
+    def __str__(self):
+        return f"{self.student.full_name} - {self.parent.full_name}"
