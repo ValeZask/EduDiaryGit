@@ -3,14 +3,18 @@ from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema, OpenApiResponse
+from .permissions import IsTeacher
+from .custom_auth import CsrfExemptSessionAuthentication
+
+
 
 from django.contrib.auth import get_user_model
-from .models import Profile
+from .models import Profile, StudentParent
 from .serializers import (
     UserSerializer,
     RegisterSerializer,
     LoginSerializer,
-    UserUpdateSerializer
+    UserUpdateSerializer, StudentParentSerializer
 )
 from .custom_auth import CsrfExemptSessionAuthentication
 
@@ -144,3 +148,104 @@ class ProfileUpdateView(generics.UpdateAPIView):
 
         return Response(UserSerializer(instance).data)
 
+
+@extend_schema(tags=["Связь Ученик-Родитель"])
+class StudentParentListCreateView(generics.ListCreateAPIView):
+    queryset = StudentParent.objects.all()
+    serializer_class = StudentParentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [CsrfExemptSessionAuthentication]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'parent':
+            return StudentParent.objects.filter(parent=user)
+        return super().get_queryset()
+
+    @extend_schema(
+        summary="Получение списка связей ученик-родитель",
+        description="Возвращает список связей. Родители видят только свои связи, учителя — все.",
+        responses={
+            200: OpenApiResponse(response=StudentParentSerializer(many=True), description="Список связей"),
+            401: OpenApiResponse(description="Неавторизован")
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Создание связи ученик-родитель",
+        description="Создает связь между учеником и родителем. Доступно только учителям.",
+        responses={
+            201: OpenApiResponse(response=StudentParentSerializer, description="Связь создана"),
+            400: OpenApiResponse(description="Ошибка валидации"),
+            403: OpenApiResponse(description="Доступ запрещен")
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        if not request.user.role == 'teacher':
+            return Response(
+                {"detail": "Только учителя могут создавать связи"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().post(request, *args, **kwargs)
+
+
+@extend_schema(tags=["Связь Ученик-Родитель"])
+class StudentParentRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = StudentParent.objects.all()
+    serializer_class = StudentParentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [CsrfExemptSessionAuthentication]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'parent':
+            return StudentParent.objects.filter(parent=user)
+        return super().get_queryset()
+
+    @extend_schema(
+        summary="Получение связи ученик-родитель",
+        description="Воз  Возвращает данные конкретной связи. Родители видят только свои связи, учителя — все.",
+        responses={
+            200: OpenApiResponse(response=StudentParentSerializer, description="Данные связи"),
+            401: OpenApiResponse(description="Неавторизован"),
+            404: OpenApiResponse(description="Связь не найдена")
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Обновление связи ученик-родитель",
+        description="Обновляет связь. Доступно только учителям.",
+        responses={
+            200: OpenApiResponse(response=StudentParentSerializer, description="Связь обновлена"),
+            400: OpenApiResponse(description="Ошибка валидации"),
+            403: OpenApiResponse(description="Доступ запрещен")
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        if not request.user.role == 'teacher':
+            return Response(
+                {"detail": "Только учителя могут обновлять связи"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().put(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Удаление связи ученик-родитель",
+        description="Удаляет связь. Доступно только учителям.",
+        responses={
+            204: OpenApiResponse(description="Связь удалена"),
+            403: OpenApiResponse(description="Доступ запрещен"),
+            404: OpenApiResponse(description="Связь не найдена")
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        if not request.user.role == 'teacher':
+            return Response(
+                {"detail": "Только учителя могут удалять связи"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().delete(request, *args, **kwargs)

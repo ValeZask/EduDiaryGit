@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
-from .models import Profile
+from .models import Profile, StudentParent
 
 User = get_user_model()
 
@@ -87,4 +87,36 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(required=True, write_only=True)
 
     def validate(self, attrs):
+        return attrs
+
+
+class StudentParentSerializer(serializers.ModelSerializer):
+    student = UserSerializer(read_only=True)
+    parent = UserSerializer(read_only=True)
+    student_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role='student'), source='student', write_only=True
+    )
+    parent_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role='parent'), source='parent', write_only=True
+    )
+
+    class Meta:
+        model = StudentParent
+        fields = ['id', 'student', 'student_id', 'parent', 'parent_id']
+
+    def validate(self, attrs):
+        student = attrs.get('student')
+        parent = attrs.get('parent')
+
+        if student.role != 'student':
+            raise serializers.ValidationError({'student': 'Пользователь должен быть учеником'})
+        if parent.role != 'parent':
+            raise serializers.ValidationError({'parent': 'Пользователь должен быть родителем'})
+
+        if self.instance is None:
+            if StudentParent.objects.filter(student=student).count() >= 2:
+                raise serializers.ValidationError(
+                    {'student': 'Ученик уже привязан к максимальному количеству родителей (2)'}
+                )
+
         return attrs
