@@ -12,6 +12,11 @@ class CategorySerializer(serializers.ModelSerializer):
 
 class NewsSerializer(serializers.ModelSerializer):
     author = serializers.StringRelatedField(read_only=True)
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(),
+        required=False,
+        write_only=True
+    )
     category_detail = CategorySerializer(source='category', read_only=True)
 
     class Meta:
@@ -23,9 +28,6 @@ class NewsSerializer(serializers.ModelSerializer):
             'image',
             'publish_date',
             'author',
-            'category',         # можно оставить, но убрать валидацию
+            'category',
             'category_detail'
         ]
-        extra_kwargs = {
-            'category': {'required': False}
-        }

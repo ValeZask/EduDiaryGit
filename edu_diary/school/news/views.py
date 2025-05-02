@@ -1,17 +1,20 @@
-from rest_framework import generics, status, viewsets
+from rest_framework import generics, status, viewsets, permissions
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from .models import News, Category
 from .serializers import NewsSerializer, CategorySerializer
+from users.permissions import IsTeacher 
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
+    permission_classes = [permissions.IsAuthenticated, IsTeacher]
 
 class NewsListView(generics.ListAPIView):
     queryset = News.objects.all().order_by('-publish_date')  # последние новости первыми
     serializer_class = NewsSerializer
+    permission_classes = [permissions.AllowAny]
 
     @extend_schema(
         tags=["Новости"],
@@ -21,9 +24,9 @@ class NewsListView(generics.ListAPIView):
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
-class NewsCreateUpdateView(generics.GenericAPIView):
+class NewsCreateView(generics.GenericAPIView):
     serializer_class = NewsSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsTeacher]
 
     @extend_schema(
         tags=["Новости"],
@@ -47,17 +50,20 @@ class NewsCreateUpdateView(generics.GenericAPIView):
         category = None
 
         # Если category_input - число (или строка-число), проверяем как ID
-        if isinstance(category_input, int) or (isinstance(category_input, str) and category_input.isdigit()):
+        if str(category_input).isdigit():
             try:
                 category = Category.objects.get(id=int(category_input))
             except Category.DoesNotExist:
                 return Response({"detail": "Категория с таким ID не найдена."},
                                 status=status.HTTP_400_BAD_REQUEST)
+            
         elif isinstance(category_input, str):
-            category = Category.objects.filter(name=category_input).first()
+            category = Category.objects.filter(name__iexact=category_input.strip()).first()
+
             if not category:
                 # Создаём новую категорию
-                category = Category.objects.create(name=category_input)
+                category = Category.objects.create(name=category_input.strip())
+
         else:
             return Response({"detail": "Некорректный формат поля 'category'."},
                             status=status.HTTP_400_BAD_REQUEST)
