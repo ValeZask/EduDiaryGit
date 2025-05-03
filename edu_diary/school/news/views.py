@@ -1,10 +1,20 @@
 from rest_framework import generics, status, viewsets, permissions
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, extend_schema_view , OpenApiResponse
 from .models import News, Category
+from .pagination import NewsPagination 
 from .serializers import NewsSerializer, CategorySerializer
 from users.permissions import IsTeacher 
+
+@extend_schema_view(
+    list=extend_schema(summary="Список категорий"),
+    retrieve=extend_schema(summary="Получить категорию по ID"),
+    create=extend_schema(summary="Создать новую категорию"),
+    update=extend_schema(summary="Обновить категорию"),
+    partial_update=extend_schema(summary="Частично обновить категорию"),
+    destroy=extend_schema(summary="Удалить категорию"),
+)
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
@@ -15,6 +25,7 @@ class NewsListView(generics.ListAPIView):
     queryset = News.objects.all().order_by('-publish_date')  # последние новости первыми
     serializer_class = NewsSerializer
     permission_classes = [permissions.AllowAny]
+    pagination_class = NewsPagination
 
     @extend_schema(
         tags=["Новости"],
