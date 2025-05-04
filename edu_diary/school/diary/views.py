@@ -12,6 +12,7 @@ from users.custom_auth import CsrfExemptSessionAuthentication
 
 User = get_user_model()
 
+
 class ScheduleView(generics.GenericAPIView):
     serializer_class = ScheduleSerializer
     permission_classes = [IsAuthenticated]
@@ -19,34 +20,42 @@ class ScheduleView(generics.GenericAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        print(f"User: {user}, Role: {user.role}")
+
         if user.role == 'student':
             profile = user.profile
-            user_class = Class.objects.filter(
-                number=profile.class_number,
-                letter=profile.class_letter
-            ).first()
-            return Schedule.objects.filter(classroom=user_class)
+            print(f"Student Profile: class_number={profile.class_number}, class_letter={profile.class_letter}")
+            # Вместо поиска Class, напрямую фильтруем Schedule по данным из Profile
+            if profile.class_number and profile.class_letter:
+                return Schedule.objects.filter(
+                    classroom__number=profile.class_number,
+                    classroom__letter=profile.class_letter
+                )
+            return Schedule.objects.none()
 
         elif user.role == 'parent':
             student_parent = user.parent_students.first()
+            print(f"Parent Student: {student_parent}")
             if not student_parent:
                 return Schedule.objects.none()
             student = student_parent.student
             profile = student.profile
-            user_class = Class.objects.filter(
-                number=profile.class_number,
-                letter=profile.class_letter
-            ).first()
-            return Schedule.objects.filter(classroom=user_class)
+            print(f"Parent's Student Profile: class_number={profile.class_number}, class_letter={profile.class_letter}")
+            if profile.class_number and profile.class_letter:
+                return Schedule.objects.filter(
+                    classroom__number=profile.class_number,
+                    classroom__letter=profile.class_letter
+                )
+            return Schedule.objects.none()
 
         elif user.role == 'teacher':
             subjects = Subject.objects.filter(teacher=user)
+            print(f"Teacher Subjects: {subjects}")
             return Schedule.objects.filter(subject__in=subjects)
 
         return Schedule.objects.none()
 
     def validate_overlapping_lessons(self, queryset, start_date, end_date):
-        """Проверка на пересечение уроков в один день для одного класса."""
         for schedule in queryset:
             overlapping = Schedule.objects.filter(
                 classroom=schedule.classroom,
@@ -64,33 +73,24 @@ class ScheduleView(generics.GenericAPIView):
         summary="Получение расписания на неделю",
         description="Возвращает расписание уроков на указанную неделю, сгруппированное по дням с датами. Доступно для учеников, родителей и учителей.",
         parameters=[
-            OpenApiParameter(name='start_date', description='Начало недели (ГГГГ-ММ-ДД), если не указано — текущая неделя', type=str, required=False),
+            OpenApiParameter(name='start_date',
+                             description='Начало недели (ГГГГ-ММ-ДД), если не указано — текущая неделя', type=str,
+                             required=False),
             OpenApiParameter(name='direction', description='Переключение недели: next/prev', type=str, required=False),
+            OpenApiParameter(name='student_id',
+                             description='ID ученика (для учителей, чтобы видеть оценки конкретного ученика)', type=int,
+                             required=False),
         ],
         responses={
-            200: OpenApiResponse(description="Расписание на неделю", examples={
-                "application/json": {
-                    "schedule": [
-                        {"day": "Пн", "date": "3", "lessons": [{"subject": "Алгебра", "start_time": "8:00", "end_time": "8:45", "grade": 4}]},
-                        {"day": "Вт", "date": "4", "lessons": [{"subject": "Био", "start_time": "8:00", "end_time": "8:45", "grade": None}]},
-                    ],
-                    "week_info": {
-                        "start_date": "2025-03-03",
-                        "end_date": "2025-03-09",
-                        "next_week_start": "2025-03-10",
-                        "prev_week_start": "2025-02-24",
-                        "month_year": "Март 2025"
-                    }
-                }
-            }),
+            200: OpenApiResponse(description="Расписание на неделю"),
             400: OpenApiResponse(description="Некорректные параметры"),
             401: OpenApiResponse(description="Неавторизован"),
         }
     )
     def get(self, request, *args, **kwargs):
-        # Определяем текущую дату
         start_date_str = request.query_params.get('start_date')
         direction = request.query_params.get('direction')
+        student_id = request.query_params.get('student_id')
 
         if start_date_str:
             start_date = parse_date(start_date_str)
@@ -101,10 +101,8 @@ class ScheduleView(generics.GenericAPIView):
                 )
         else:
             start_date = datetime.today().date()
-            # Перемотка к началу недели (понедельник)
             start_date -= timedelta(days=start_date.weekday())
 
-        # Обработка переключения недели
         if direction:
             if direction == 'next':
                 start_date += timedelta(days=7)
@@ -118,22 +116,18 @@ class ScheduleView(generics.GenericAPIView):
 
         end_date = start_date + timedelta(days=6)
 
-        # Получаем расписание
         queryset = self.get_queryset().filter(
             day_of_week__range=[start_date.weekday() + 1, end_date.weekday() + 1]
         )
 
-        # Валидация пересечений уроков
         try:
             self.validate_overlapping_lessons(queryset, start_date, end_date)
         except serializers.ValidationError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Формируем ответ
         days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         result = []
 
-        # Всегда возвращаем 7 дней, даже если уроков нет
         current_date = start_date
         for i in range(7):
             day_index = current_date.weekday()
@@ -142,7 +136,7 @@ class ScheduleView(generics.GenericAPIView):
             lessons_serializer = LessonSerializer(
                 day_schedules,
                 many=True,
-                context={'request': request, 'date': current_date}
+                context={'request': request, 'date': current_date, 'student_id': student_id}
             )
             result.append({
                 "day": day_name,
@@ -151,14 +145,12 @@ class ScheduleView(generics.GenericAPIView):
             })
             current_date += timedelta(days=1)
 
-        # Форматируем название месяца для фронта
         months = [
             "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
             "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
         ]
         month_year = f"{months[start_date.month - 1]} {start_date.year}"
 
-        # Добавляем информацию о неделе
         response = {
             "schedule": result,
             "week_info": {

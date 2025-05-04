@@ -21,21 +21,28 @@ class LessonSerializer(serializers.ModelSerializer):
         fields = ['subject', 'start_time', 'end_time', 'grade']
 
     def get_start_time(self, obj):
-        return obj.start_time.strftime("%H:%M")  # Формат "8:00"
+        return obj.start_time.strftime("%H:%M")
 
     def get_end_time(self, obj):
-        return obj.end_time.strftime("%H:%M")    # Формат "8:45"
+        return obj.end_time.strftime("%H:%M")
 
     def get_grade(self, obj):
         user = self.context['request'].user
-        student = None
         date = self.context.get('date')
+        student_id = self.context.get('student_id')  # Получаем student_id из контекста
+        student = None
 
         if user.role == 'student':
             student = user
         elif user.role == 'parent':
             student_parent = user.parent_students.first()
             student = student_parent.student if student_parent else None
+        elif user.role == 'teacher':
+            if student_id:
+                student = User.objects.filter(id=student_id, role='student').first()
+            else:
+                # Если student_id не указан, возвращаем None (или можно показать оценки всех учеников)
+                return None
 
         if student and date:
             grade = Grade.objects.filter(
@@ -45,6 +52,7 @@ class LessonSerializer(serializers.ModelSerializer):
             ).first()
             return grade.value if grade else None
         return None
+
 
 class ScheduleSerializer(serializers.Serializer):
     day = serializers.CharField()
