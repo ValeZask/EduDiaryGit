@@ -1,5 +1,5 @@
 from rest_framework import generics, permissions, status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
@@ -20,14 +20,6 @@ class ChatListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         return Chat.objects.filter(chat_participants__user=self.request.user).distinct()
 
-    def perform_create(self, serializer):
-        chat = serializer.save()
-        ChatParticipant.objects.create(
-            chat=chat,
-            user=self.request.user,
-            role=ChatParticipantRoleEnum.ADMIN
-        )
-
 
 @extend_schema(summary="Получить детали чата")
 class ChatRetrieveView(generics.RetrieveAPIView):
@@ -36,6 +28,19 @@ class ChatRetrieveView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return Chat.objects.filter(chat_participants__user=self.request.user)
+
+
+@extend_schema(summary="Поиск чатов по названию")
+class ChatSearchView(generics.ListAPIView):
+    serializer_class = ChatSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        search_query = self.request.query_params.get('search', '')
+        return Chat.objects.filter(
+            chat_participants__user=self.request.user,
+            title__icontains=search_query
+        ).distinct()
 
 
 @extend_schema_view(
@@ -52,6 +57,10 @@ class ChatMessageListCreateView(generics.ListCreateAPIView):
 
         if not ChatParticipant.objects.filter(chat=chat, user=self.request.user).exists():
             raise PermissionDenied("Вы не участник чата.")
+
+        search_params = self.request.query_params.get('search')
+        if search_params:
+            return ChatMessage.objects.filter(chat_id=chat_id, message_content__icontains=search_params).order_by('-created_at')
 
         return ChatMessage.objects.filter(chat_id=chat_id).order_by('-created_at')
 
@@ -83,7 +92,7 @@ class ChatParticipantListView(generics.ListAPIView):
         chat = get_object_or_404(Chat, id=chat_id)
 
         if not ChatParticipant.objects.filter(chat=chat, user=self.request.user).exists():
-            raise PermissionDenied("Вы не участник чата.")
+            raise PermissionDenied("Вы не участник чата!")
 
         return ChatParticipant.objects.filter(chat_id=chat_id)
 
@@ -107,10 +116,16 @@ class AddChatParticipantView(generics.CreateAPIView):
     serializer_class = ChatParticipantSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_queryset(self):
+        chat_id = self.kwargs.get('chat_id')
+        return ChatParticipant.objects.filter(chat_id=chat_id)
+
     def perform_create(self, serializer):
         chat_id = self.kwargs.get('chat_id')
         chat = get_object_or_404(Chat, id=chat_id)
+        users = serializer.validated_data['users']
 
+        # Проверка на администратора
         if not ChatParticipant.objects.filter(
                 chat=chat,
                 user=self.request.user,
@@ -118,6 +133,12 @@ class AddChatParticipantView(generics.CreateAPIView):
         ).exists():
             raise PermissionDenied("Только администратор чата может добавлять участников.")
 
+        # Проверка на существующих пользователей
+        for user in users:
+            if ChatParticipant.objects.filter(chat=chat, user=user).exists():
+                raise ValidationError({"detail": f"Пользователь {user.username} уже в чате."})
+
+        # Создаем участников - это делается в сериализаторе
         serializer.save(chat=chat, role=ChatParticipantRoleEnum.MEMBER)
 
 

@@ -24,7 +24,7 @@ class Chat(TimeStamp):
         verbose_name_plural = "Чаты"
 
     def __str__(self):
-        return self.title
+        return f'{self.title} ({self.type})'
 
     def get_last_message(self):
         return self.messages.order_by('-created_at').first()
@@ -34,6 +34,20 @@ class Chat(TimeStamp):
         if not participant:
             return 0
         return participant.unread_count
+
+    def change_type(self):
+        participants_count = self.chat_participants.count()
+
+        if participants_count > 2:
+            new_type = 'GROUP'
+        else:
+            new_type = 'PRIVATE'
+
+        if self.type != new_type:
+            self.type = new_type
+            self.save(update_fields=['type'])
+
+        return self.type
 
 
 class ChatMessage(TimeStamp):
