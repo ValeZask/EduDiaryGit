@@ -1,3 +1,8 @@
 from django.contrib import admin
+from .achievements.models import Achievement, AchievementPlace, AchievementCategory
 
-# Register your models here.
+
+
+admin.site.register(Achievement)
+admin.site.register(AchievementPlace)
+admin.site.register(AchievementCategory)

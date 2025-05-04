@@ -1,7 +1,8 @@
 from django.urls import path
+from .views import StudentAchievementsSummaryView
 
 app_name = 'achievements'
 
 urlpatterns = [
-    # Пока пусто, можно будет добавить маршруты позже
+    path('summary/', StudentAchievementsSummaryView.as_view(), name='achievements-summary'),
 ]
