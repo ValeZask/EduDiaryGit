@@ -1,10 +1,21 @@
 from django.urls import path
-from . import views
+from .views import (
+    ChatListCreateView,
+    ChatRetrieveView,
+    ChatMessageListCreateView,
+    ChatParticipantListView,
+    MarkAllMessagesAsReadView,
+    AddChatParticipantView,
+)
 
 app_name = 'chat'
 
 urlpatterns = [
-    path('chats/', views.ChatListCreateView.as_view(), name='chat-list-create'),
-    path('chats/<int:chat_id>/messages/', views.ChatMessageListCreateView.as_view(), name='chat-messages'),
-    path('messages/unread/', views.UnreadMessageListView.as_view(), name='unread-messages'),
+    path('chats/', ChatListCreateView.as_view(), name='chat-list-create'),
+    path('chats/<int:pk>/', ChatRetrieveView.as_view(), name='chat-detail'),
+    path('chats/<int:chat_id>/messages/', ChatMessageListCreateView.as_view(), name='chat-messages'),
+    path('chats/<int:chat_id>/participants/', ChatParticipantListView.as_view(), name='chat-participants'),
+    path('chats/<int:chat_id>/participants/add/', AddChatParticipantView.as_view(), name='chat-add-participant'),
+    path('chats/<int:chat_id>/read/', MarkAllMessagesAsReadView.as_view(), name='mark-read'),
 ]
+

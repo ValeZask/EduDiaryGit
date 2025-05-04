@@ -8,3 +8,4 @@ class ChatTypeEnum(models.TextChoices):
 class ChatParticipantRoleEnum(models.TextChoices):
     ADMIN = ('admin', 'Администратор')
     MEMBER = ('member', 'Участник')
+
