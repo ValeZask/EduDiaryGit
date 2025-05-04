@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from django.utils.dateparse import parse_date
 from django.contrib.auth import get_user_model
 from .models import Schedule, Grade, Class, Subject
-from .serializers import ScheduleSerializer, GradeSerializer
+from .serializers import ScheduleSerializer, GradeSerializer, LessonSerializer  # Добавили LessonSerializer
 from users.permissions import IsTeacher
 from users.custom_auth import CsrfExemptSessionAuthentication
 
@@ -45,70 +45,132 @@ class ScheduleView(generics.GenericAPIView):
 
         return Schedule.objects.none()
 
+    def validate_overlapping_lessons(self, queryset, start_date, end_date):
+        """Проверка на пересечение уроков в один день для одного класса."""
+        for schedule in queryset:
+            overlapping = Schedule.objects.filter(
+                classroom=schedule.classroom,
+                day_of_week=schedule.day_of_week,
+                start_time__lt=schedule.end_time,
+                end_time__gt=schedule.start_time
+            ).exclude(id=schedule.id)
+            if overlapping.exists():
+                raise serializers.ValidationError(
+                    f"Урок {schedule.subject} пересекается с другим уроком в {schedule.get_day_of_week_display()}."
+                )
+
     @extend_schema(
         tags=["Дневник"],
         summary="Получение расписания на неделю",
-        description="Возвращает расписание уроков на указанную неделю, сгруппированное по дням. Доступно для учеников, родителей и учителей.",
+        description="Возвращает расписание уроков на указанную неделю, сгруппированное по дням с датами. Доступно для учеников, родителей и учителей.",
         parameters=[
-            OpenApiParameter(name='start_date', description='Начало недели (ГГГГ-ММ-ДД)', type=str, required=True),
-            OpenApiParameter(name='end_date', description='Конец недели (ГГГГ-ММ-ДД)', type=str, required=True),
+            OpenApiParameter(name='start_date', description='Начало недели (ГГГГ-ММ-ДД), если не указано — текущая неделя', type=str, required=False),
+            OpenApiParameter(name='direction', description='Переключение недели: next/prev', type=str, required=False),
         ],
         responses={
             200: OpenApiResponse(description="Расписание на неделю", examples={
                 "application/json": {
-                    "Пн": [{"subject": "Алгебра", "start_time": "08:00:00", "end_time": "08:45:00", "grade": 4}],
-                    "Вт": [{"subject": "Рус.яз", "start_time": "08:50:00", "end_time": "09:35:00", "grade": 5}],
+                    "schedule": [
+                        {"day": "Пн", "date": "3", "lessons": [{"subject": "Алгебра", "start_time": "8:00", "end_time": "8:45", "grade": 4}]},
+                        {"day": "Вт", "date": "4", "lessons": [{"subject": "Био", "start_time": "8:00", "end_time": "8:45", "grade": None}]},
+                    ],
+                    "week_info": {
+                        "start_date": "2025-03-03",
+                        "end_date": "2025-03-09",
+                        "next_week_start": "2025-03-10",
+                        "prev_week_start": "2025-02-24",
+                        "month_year": "Март 2025"
+                    }
                 }
             }),
-            400: OpenApiResponse(description="Некорректные даты"),
+            400: OpenApiResponse(description="Некорректные параметры"),
             401: OpenApiResponse(description="Неавторизован"),
         }
     )
     def get(self, request, *args, **kwargs):
+        # Определяем текущую дату
         start_date_str = request.query_params.get('start_date')
-        end_date_str = request.query_params.get('end_date')
+        direction = request.query_params.get('direction')
 
-        if not start_date_str or not end_date_str:
-            return Response(
-                {"detail": "Не указаны start_date или end_date"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if start_date_str:
+            start_date = parse_date(start_date_str)
+            if not start_date:
+                return Response(
+                    {"detail": "Некорректный формат даты. Используйте ГГГГ-ММ-ДД"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            start_date = datetime.today().date()
+            # Перемотка к началу недели (понедельник)
+            start_date -= timedelta(days=start_date.weekday())
 
-        start_date = parse_date(start_date_str)
-        end_date = parse_date(end_date_str)
+        # Обработка переключения недели
+        if direction:
+            if direction == 'next':
+                start_date += timedelta(days=7)
+            elif direction == 'prev':
+                start_date -= timedelta(days=7)
+            else:
+                return Response(
+                    {"detail": "Параметр direction должен быть 'next' или 'prev'"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        if not start_date or not end_date:
-            return Response(
-                {"detail": "Некорректный формат даты. Используйте ГГГГ-ММ-ДД"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        end_date = start_date + timedelta(days=6)
 
-        if start_date > end_date:
-            return Response(
-                {"detail": "start_date должна быть раньше end_date"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+        # Получаем расписание
         queryset = self.get_queryset().filter(
             day_of_week__range=[start_date.weekday() + 1, end_date.weekday() + 1]
         )
 
-        days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-        result = {day: [] for day in days[start_date.weekday():end_date.weekday() + 1]}
+        # Валидация пересечений уроков
+        try:
+            self.validate_overlapping_lessons(queryset, start_date, end_date)
+        except serializers.ValidationError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Формируем ответ
+        days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        result = []
+
+        # Всегда возвращаем 7 дней, даже если уроков нет
         current_date = start_date
-        while current_date <= end_date:
-            day_name = days[current_date.weekday()]
-            day_schedules = queryset.filter(day_of_week=current_date.weekday() + 1)
-            serializer = self.get_serializer(
+        for i in range(7):
+            day_index = current_date.weekday()
+            day_name = days[day_index]
+            day_schedules = queryset.filter(day_of_week=day_index + 1)
+            lessons_serializer = LessonSerializer(
                 day_schedules,
                 many=True,
                 context={'request': request, 'date': current_date}
             )
-            result[day_name] = serializer.data
+            result.append({
+                "day": day_name,
+                "date": str(current_date.day),
+                "lessons": lessons_serializer.data
+            })
             current_date += timedelta(days=1)
 
-        return Response(result)
+        # Форматируем название месяца для фронта
+        months = [
+            "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+            "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+        ]
+        month_year = f"{months[start_date.month - 1]} {start_date.year}"
+
+        # Добавляем информацию о неделе
+        response = {
+            "schedule": result,
+            "week_info": {
+                "start_date": start_date.strftime("%Y-%m-%d"),
+                "end_date": end_date.strftime("%Y-%m-%d"),
+                "next_week_start": (start_date + timedelta(days=7)).strftime("%Y-%m-%d"),
+                "prev_week_start": (start_date - timedelta(days=7)).strftime("%Y-%m-%d"),
+                "month_year": month_year
+            }
+        }
+
+        return Response(response)
 
 class GradeCreateUpdateView(generics.GenericAPIView):
     serializer_class = GradeSerializer
@@ -130,6 +192,7 @@ class GradeCreateUpdateView(generics.GenericAPIView):
         student_id = request.data.get('student')
         subject_id = request.data.get('subject')
         date_str = request.data.get('date')
+        value = request.data.get('value')
 
         if not all([student_id, subject_id, date_str]):
             return Response(
@@ -141,6 +204,20 @@ class GradeCreateUpdateView(generics.GenericAPIView):
         if not date:
             return Response(
                 {"detail": "Некорректный формат даты. Используйте ГГГГ-ММ-ДД"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Проверка, что оценка в допустимом диапазоне
+        try:
+            value = int(value)
+            if value not in [2, 3, 4, 5]:
+                return Response(
+                    {"detail": "Оценка должна быть в диапазоне от 2 до 5"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Оценка должна быть числом"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -157,7 +234,7 @@ class GradeCreateUpdateView(generics.GenericAPIView):
             student=student,
             subject=subject,
             date=date,
-            defaults={'value': request.data.get('value'), 'comment': request.data.get('comment', '')}
+            defaults={'value': value, 'comment': request.data.get('comment', '')}
         )
 
         if not created:
