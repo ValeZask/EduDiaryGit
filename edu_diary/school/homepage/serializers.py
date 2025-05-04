@@ -10,7 +10,7 @@ class StudentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = [ 'full_name', 'avatar', 'class_number' ]
+        fields = [ 'full_name', 'avatar', 'class_number', 'class_letter' ]
 
 
 class EventSerializer(serializers.ModelSerializer):
