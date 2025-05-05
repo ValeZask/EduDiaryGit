@@ -13,6 +13,7 @@ class UserShortSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'avatar', 'role']
 
 
+# chat/serializers.py
 class ChatMessageSerializer(serializers.ModelSerializer):
     sender = UserShortSerializer(read_only=True)
     read_by = UserShortSerializer(many=True, read_only=True)
@@ -20,7 +21,7 @@ class ChatMessageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatMessage
         fields = ['id', 'sender', 'chat', 'message_content', 'created_at', 'read_by']
-        read_only_fields = ['id', 'sender', 'created_at', 'read_by']
+        read_only_fields = ['id', 'sender', 'created_at', 'read_by', 'chat']
 
 
 class ChatParticipantSerializer(serializers.ModelSerializer):
