@@ -45,6 +45,7 @@ INSTALLED_APPS = [
 
     'drf_spectacular',
     'rest_framework',
+    'django_filters',
 
     'users',
     'school',

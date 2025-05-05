@@ -5,6 +5,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from users.models import User
 from .serializers import StudentWithAchievementsSerializer
 from drf_spectacular.utils import extend_schema
+from rest_framework.permissions import IsAuthenticated
+from users.custom_auth import CsrfExemptSessionAuthentication
 
 
 class CustomPagination(PageNumberPagination):
@@ -23,6 +25,8 @@ class StudentAchievementsSummaryView(ListAPIView):
     filter_backends = [filters.SearchFilter, DjangoFilterBackend]
     search_fields = ['full_name']
     filterset_fields = ['achievements__category']
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
         return User.objects.filter(role="student").distinct()

@@ -17,7 +17,8 @@ class StudentWithAchievementsSerializer(serializers.Serializer):
             "student_id": instance.id,
             "full_name": instance.full_name,
             "avatar": instance.avatar.url if instance.avatar else None,
-            "class_number": instance.profile.class_number if hasattr(instance, 'profile') else None,
+            "class_number": instance.profile.class_number if hasattr(instance,
+                                                                     'profile') and instance.profile.class_number else None,
             "achievements_count": achievements.exclude(place__isnull=True).count(),
             "participation_count": achievements.count(),
             "top_achievement": achievements.order_by('place').first().title if achievements.exists() else None
